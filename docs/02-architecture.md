@@ -49,7 +49,7 @@ EthAum.ai is designed as a modern, cloud-native web application following micros
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                            DATA LAYER                                        │
 ├────────────────┬────────────────┬────────────────┬─────────────────────────┤
-│   PostgreSQL   │     Redis      │   Blob Store   │   Vector DB (Future)    │
+│    MongoDB     │     Redis      │   Blob Store   │   Vector DB (Future)    │
 │  (Primary DB)  │   (Caching)    │ (Media Files)  │   (AI Embeddings)       │
 └────────────────┴────────────────┴────────────────┴─────────────────────────┘
 ```
@@ -77,7 +77,7 @@ EthAum.ai is designed as a modern, cloud-native web application following micros
 |-------|------------|-----------|
 | Runtime | Node.js 20+ | JavaScript ecosystem, async I/O |
 | Framework | Next.js API Routes | Unified codebase, easy deployment |
-| ORM | Prisma | Type-safe database access |
+| ODM | Mongoose | Schema-based MongoDB access, rich queries |
 | Validation | Zod | Runtime type validation |
 | Auth | NextAuth.js | Built-in OAuth, sessions |
 | Queue | BullMQ (Redis) | Background job processing |
@@ -88,7 +88,7 @@ EthAum.ai is designed as a modern, cloud-native web application following micros
 | Layer | Technology | Rationale |
 |-------|------------|-----------|
 | Hosting | Vercel | Native Next.js support, edge network |
-| Database | Supabase / Neon | Managed PostgreSQL, generous free tier |
+| Database | MongoDB Atlas | Managed MongoDB, generous free tier |
 | Cache | Upstash Redis | Serverless Redis |
 | Storage | Cloudflare R2 / AWS S3 | Media file storage |
 | CDN | Cloudflare | Global content delivery |
@@ -418,8 +418,8 @@ main (production)
 ## 10. MVP Implementation Phases
 
 ### Phase 1: Foundation (Week 1-2)
-- Project setup (Next.js, Prisma, Auth)
-- Database schema implementation
+- Project setup (Next.js, Mongoose, Auth)
+- MongoDB schema implementation
 - Basic UI component library
 - Authentication flow
 

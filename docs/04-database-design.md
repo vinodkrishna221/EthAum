@@ -1,551 +1,543 @@
 # EthAum.ai - Database Design Document
 
-**Version:** 1.0  
+**Version:** 1.1  
 **Date:** January 4, 2026  
-**Database:** PostgreSQL  
+**Database:** MongoDB (via Mongoose)  
 
 ---
 
 ## 1. Schema Overview
 
-This document provides the complete database schema for EthAum.ai MVP, including all tables, relationships, and indexes required for the platform.
+This document provides the complete database schema for EthAum.ai MVP using MongoDB with Mongoose ODM, including all collections, relationships, and indexes.
 
 ---
 
-## 2. Prisma Schema
-
-```prisma
-// prisma/schema.prisma
-
-generator client {
-  provider = "prisma-client-js"
-}
-
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-// =====================
-// USER & AUTHENTICATION
-// =====================
-
-model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  emailVerified DateTime?
-  name          String?
-  image         String?
-  bio           String?
-  linkedinUrl   String?
-  twitterUrl    String?
-  role          UserRole  @default(USER)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  // Relations
-  accounts      Account[]
-  sessions      Session[]
-  companies     UserCompany[]
-  upvotes       Upvote[]
-  comments      Comment[]
-  reviews       Review[]
-  pilotInquiries PilotInquiry[]
-  notifications  Notification[]
-
-  @@map("users")
-}
-
-model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  type              String
-  provider          String
-  providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String? @db.Text
-  session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([provider, providerAccountId])
-  @@map("accounts")
-}
-
-model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
-  expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("sessions")
-}
-
-model VerificationToken {
-  identifier String
-  token      String   @unique
-  expires    DateTime
-
-  @@unique([identifier, token])
-  @@map("verification_tokens")
-}
-
-enum UserRole {
-  USER
-  STARTUP_ADMIN
-  ENTERPRISE_BUYER
-  ADMIN
-}
-
-// =====================
-// COMPANIES & PRODUCTS
-// =====================
-
-model Company {
-  id            String       @id @default(cuid())
-  name          String
-  slug          String       @unique
-  tagline       String?
-  description   String?      @db.Text
-  logoUrl       String?
-  website       String?
-  linkedinUrl   String?
-  twitterUrl    String?
-  revenueStage  RevenueStage?
-  arrRange      String?
-  teamSize      TeamSize?
-  foundedAt     DateTime?
-  headquarters  String?
-  verified      Boolean      @default(false)
-  featured      Boolean      @default(false)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-
-  // Relations
-  categoryId       String?
-  category         Category?          @relation(fields: [categoryId], references: [id])
-  members          UserCompany[]
-  products         Product[]
-  credibilityScore CredibilityScore?
-
-  @@index([slug])
-  @@index([categoryId])
-  @@index([revenueStage])
-  @@map("companies")
-}
-
-model UserCompany {
-  id        String            @id @default(cuid())
-  userId    String
-  companyId String
-  role      CompanyMemberRole @default(MEMBER)
-  createdAt DateTime          @default(now())
-
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, companyId])
-  @@map("user_companies")
-}
-
-enum CompanyMemberRole {
-  OWNER
-  ADMIN
-  MEMBER
-}
-
-enum RevenueStage {
-  PRE_REVENUE
-  SERIES_A    // $1M - $5M ARR
-  SERIES_B    // $5M - $15M ARR
-  SERIES_C    // $15M - $30M ARR
-  SERIES_D    // $30M+ ARR
-}
-
-enum TeamSize {
-  SIZE_1_10
-  SIZE_11_50
-  SIZE_51_200
-  SIZE_201_500
-  SIZE_500_PLUS
-}
-
-model Product {
-  id          String   @id @default(cuid())
-  companyId   String
-  name        String
-  slug        String   @unique
-  tagline     String?
-  description String?  @db.Text
-  logoUrl     String?
-  websiteUrl  String?
-  pricingUrl  String?
-  media       Json?    // Array of {type, url, caption}
-  features    Json?    // Array of feature strings
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  launches  Launch[]
-  reviews   Review[]
-  pilots    Pilot[]
-  tags      ProductTag[]
-
-  @@index([slug])
-  @@index([companyId])
-  @@map("products")
-}
-
-model ProductTag {
-  id        String  @id @default(cuid())
-  productId String
-  tagId     String
-
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
-
-  @@unique([productId, tagId])
-  @@map("product_tags")
-}
-
-model Tag {
-  id        String       @id @default(cuid())
-  name      String       @unique
-  slug      String       @unique
-  createdAt DateTime     @default(now())
-
-  products  ProductTag[]
-
-  @@map("tags")
-}
-
-// =====================
-// CATEGORIES
-// =====================
-
-model Category {
-  id          String   @id @default(cuid())
-  name        String
-  slug        String   @unique
-  description String?
-  icon        String?
-  color       String?
-  parentId    String?
-  sortOrder   Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Self-relation for hierarchical categories
-  parent   Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
-  children Category[] @relation("CategoryHierarchy")
-
-  companies Company[]
-
-  @@index([slug])
-  @@index([parentId])
-  @@map("categories")
-}
-
-// =====================
-// LAUNCHES
-// =====================
-
-model Launch {
-  id            String       @id @default(cuid())
-  productId     String
-  title         String
-  tagline       String
-  description   String?      @db.Text
-  media         Json?        // Array of {type, url, caption}
-  scheduledAt   DateTime?
-  launchedAt    DateTime?
-  status        LaunchStatus @default(DRAFT)
-  featured      Boolean      @default(false)
-  upvoteCount   Int          @default(0)
-  commentCount  Int          @default(0)
-  viewCount     Int          @default(0)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-
-  // Relations
-  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
-  upvotes   Upvote[]
-  comments  Comment[]
-
-  @@index([productId])
-  @@index([launchedAt])
-  @@index([status])
-  @@index([featured])
-  @@map("launches")
-}
-
-enum LaunchStatus {
-  DRAFT
-  SCHEDULED
-  LIVE
-  COMPLETED
-  CANCELLED
-}
-
-model Upvote {
-  id        String   @id @default(cuid())
-  launchId  String
-  userId    String
-  createdAt DateTime @default(now())
-
-  launch Launch @relation(fields: [launchId], references: [id], onDelete: Cascade)
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([launchId, userId])
-  @@index([launchId])
-  @@index([userId])
-  @@map("upvotes")
-}
-
-model Comment {
-  id        String   @id @default(cuid())
-  launchId  String
-  userId    String
-  parentId  String?
-  content   String   @db.Text
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  launch   Launch    @relation(fields: [launchId], references: [id], onDelete: Cascade)
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
-  replies  Comment[] @relation("CommentReplies")
-
-  @@index([launchId])
-  @@index([userId])
-  @@index([parentId])
-  @@map("comments")
-}
-
-// =====================
-// REVIEWS
-// =====================
-
-model Review {
-  id            String       @id @default(cuid())
-  productId     String
-  authorId      String
-  rating        Int          // 1-5 stars
-  title         String?
-  content       String       @db.Text
-  pros          String?      @db.Text
-  cons          String?      @db.Text
-  videoUrl      String?
-  verified      Boolean      @default(false)
-  verifiedAt    DateTime?
-  status        ReviewStatus @default(PENDING)
-  helpfulCount  Int          @default(0)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-
-  // Relations
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  author  User    @relation(fields: [authorId], references: [id], onDelete: Cascade)
-
-  @@index([productId])
-  @@index([authorId])
-  @@index([status])
-  @@index([verified])
-  @@map("reviews")
-}
-
-enum ReviewStatus {
-  PENDING
-  APPROVED
-  REJECTED
-}
-
-// =====================
-// PILOTS & DEALS
-// =====================
-
-model Pilot {
-  id              String      @id @default(cuid())
-  productId       String
-  title           String
-  description     String      @db.Text
-  pilotType       PilotType
-  originalPrice   Decimal?    @db.Decimal(10, 2)
-  pilotPrice      Decimal     @db.Decimal(10, 2)
-  durationDays    Int
-  spotsTotal      Int
-  spotsRemaining  Int
-  requirements    String?     @db.Text
-  deliverables    String?     @db.Text
-  status          PilotStatus @default(DRAFT)
-  startsAt        DateTime?
-  endsAt          DateTime?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-
-  // Relations
-  product   Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
-  inquiries PilotInquiry[]
-
-  @@index([productId])
-  @@index([status])
-  @@map("pilots")
-}
-
-enum PilotType {
-  FREE_TRIAL
-  DISCOUNTED
-  POC
-  ENTERPRISE_PILOT
-}
-
-enum PilotStatus {
-  DRAFT
-  ACTIVE
-  FULL
-  COMPLETED
-  CANCELLED
-}
-
-model PilotInquiry {
-  id           String              @id @default(cuid())
-  pilotId      String
-  userId       String
-  companyName  String?
-  message      String?             @db.Text
-  status       PilotInquiryStatus  @default(PENDING)
-  respondedAt  DateTime?
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-
-  // Relations
-  pilot Pilot @relation(fields: [pilotId], references: [id], onDelete: Cascade)
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([pilotId])
-  @@index([userId])
-  @@index([status])
-  @@map("pilot_inquiries")
-}
-
-enum PilotInquiryStatus {
-  PENDING
-  ACCEPTED
-  REJECTED
-  COMPLETED
-}
-
-// =====================
-// CREDIBILITY & SCORING
-// =====================
-
-model CredibilityScore {
-  id                String   @id @default(cuid())
-  companyId         String   @unique
-  overallScore      Int      // 0-100
-  reviewScore       Int      // 0-100
-  launchScore       Int      // 0-100
-  engagementScore   Int      // 0-100
-  verificationScore Int      // 0-100
-  breakdown         Json?    // Detailed scoring breakdown
-  calculatedAt      DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  // Relations
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  @@map("credibility_scores")
-}
-
-// =====================
-// NOTIFICATIONS
-// =====================
-
-model Notification {
-  id        String           @id @default(cuid())
-  userId    String
-  type      NotificationType
-  title     String
-  message   String
-  data      Json?            // Additional context data
-  read      Boolean          @default(false)
-  readAt    DateTime?
-  createdAt DateTime         @default(now())
-
-  // Relations
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([read])
-  @@index([createdAt])
-  @@map("notifications")
-}
-
-enum NotificationType {
-  LAUNCH_UPVOTE
-  LAUNCH_COMMENT
-  NEW_REVIEW
-  PILOT_INQUIRY
-  SYSTEM
-}
+## 2. Mongoose Schemas
+
+```javascript
+// models/User.js
+
+import mongoose from 'mongoose';
+
+const UserSchema = new mongoose.Schema({
+  email: { 
+    type: String, 
+    required: true, 
+    unique: true,
+    lowercase: true,
+    trim: true
+  },
+  emailVerified: { type: Date },
+  name: { type: String, trim: true },
+  image: { type: String },
+  bio: { type: String },
+  linkedinUrl: { type: String },
+  twitterUrl: { type: String },
+  role: { 
+    type: String, 
+    enum: ['USER', 'STARTUP_ADMIN', 'ENTERPRISE_BUYER', 'ADMIN'],
+    default: 'USER'
+  }
+}, { timestamps: true });
+
+UserSchema.index({ email: 1 });
+
+export default mongoose.models.User || mongoose.model('User', UserSchema);
+```
+
+```javascript
+// models/Account.js
+
+import mongoose from 'mongoose';
+
+const AccountSchema = new mongoose.Schema({
+  userId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User', 
+    required: true 
+  },
+  type: { type: String, required: true },
+  provider: { type: String, required: true },
+  providerAccountId: { type: String, required: true },
+  refresh_token: { type: String },
+  access_token: { type: String },
+  expires_at: { type: Number },
+  token_type: { type: String },
+  scope: { type: String },
+  id_token: { type: String },
+  session_state: { type: String }
+}, { timestamps: true });
+
+AccountSchema.index({ provider: 1, providerAccountId: 1 }, { unique: true });
+
+export default mongoose.models.Account || mongoose.model('Account', AccountSchema);
+```
+
+```javascript
+// models/Company.js
+
+import mongoose from 'mongoose';
+
+const CompanySchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true },
+  slug: { type: String, required: true, unique: true, lowercase: true },
+  tagline: { type: String },
+  description: { type: String },
+  logoUrl: { type: String },
+  website: { type: String },
+  linkedinUrl: { type: String },
+  twitterUrl: { type: String },
+  revenueStage: { 
+    type: String, 
+    enum: ['PRE_REVENUE', 'SERIES_A', 'SERIES_B', 'SERIES_C', 'SERIES_D']
+  },
+  arrRange: { type: String },
+  teamSize: { 
+    type: String, 
+    enum: ['SIZE_1_10', 'SIZE_11_50', 'SIZE_51_200', 'SIZE_201_500', 'SIZE_500_PLUS']
+  },
+  foundedAt: { type: Date },
+  headquarters: { type: String },
+  verified: { type: Boolean, default: false },
+  featured: { type: Boolean, default: false },
+  categoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Category' },
+  members: [{
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    role: { 
+      type: String, 
+      enum: ['OWNER', 'ADMIN', 'MEMBER'],
+      default: 'MEMBER'
+    },
+    joinedAt: { type: Date, default: Date.now }
+  }],
+  credibilityScore: {
+    overall: { type: Number, default: 0 },
+    review: { type: Number, default: 0 },
+    launch: { type: Number, default: 0 },
+    engagement: { type: Number, default: 0 },
+    verification: { type: Number, default: 0 },
+    calculatedAt: { type: Date }
+  }
+}, { timestamps: true });
+
+CompanySchema.index({ slug: 1 });
+CompanySchema.index({ categoryId: 1 });
+CompanySchema.index({ revenueStage: 1 });
+CompanySchema.index({ 'members.userId': 1 });
+
+export default mongoose.models.Company || mongoose.model('Company', CompanySchema);
+```
+
+```javascript
+// models/Product.js
+
+import mongoose from 'mongoose';
+
+const ProductSchema = new mongoose.Schema({
+  companyId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Company', 
+    required: true 
+  },
+  name: { type: String, required: true, trim: true },
+  slug: { type: String, required: true, unique: true, lowercase: true },
+  tagline: { type: String },
+  description: { type: String },
+  logoUrl: { type: String },
+  websiteUrl: { type: String },
+  pricingUrl: { type: String },
+  media: [{
+    type: { type: String, enum: ['image', 'video', 'gif'] },
+    url: String,
+    caption: String
+  }],
+  features: [{ type: String }],
+  tags: [{ type: String, lowercase: true }]
+}, { timestamps: true });
+
+ProductSchema.index({ slug: 1 });
+ProductSchema.index({ companyId: 1 });
+ProductSchema.index({ tags: 1 });
+
+export default mongoose.models.Product || mongoose.model('Product', ProductSchema);
+```
+
+```javascript
+// models/Launch.js
+
+import mongoose from 'mongoose';
+
+const LaunchSchema = new mongoose.Schema({
+  productId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Product', 
+    required: true 
+  },
+  title: { type: String, required: true },
+  tagline: { type: String, required: true },
+  description: { type: String },
+  media: [{
+    type: { type: String, enum: ['image', 'video', 'gif'] },
+    url: String,
+    caption: String
+  }],
+  scheduledAt: { type: Date },
+  launchedAt: { type: Date },
+  status: { 
+    type: String, 
+    enum: ['DRAFT', 'SCHEDULED', 'LIVE', 'COMPLETED', 'CANCELLED'],
+    default: 'DRAFT'
+  },
+  featured: { type: Boolean, default: false },
+  upvoteCount: { type: Number, default: 0 },
+  commentCount: { type: Number, default: 0 },
+  viewCount: { type: Number, default: 0 }
+}, { timestamps: true });
+
+LaunchSchema.index({ productId: 1 });
+LaunchSchema.index({ launchedAt: -1 });
+LaunchSchema.index({ status: 1 });
+LaunchSchema.index({ featured: 1 });
+
+export default mongoose.models.Launch || mongoose.model('Launch', LaunchSchema);
+```
+
+```javascript
+// models/Upvote.js
+
+import mongoose from 'mongoose';
+
+const UpvoteSchema = new mongoose.Schema({
+  launchId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Launch', 
+    required: true 
+  },
+  userId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User', 
+    required: true 
+  }
+}, { timestamps: true });
+
+UpvoteSchema.index({ launchId: 1, userId: 1 }, { unique: true });
+UpvoteSchema.index({ launchId: 1 });
+UpvoteSchema.index({ userId: 1 });
+
+export default mongoose.models.Upvote || mongoose.model('Upvote', UpvoteSchema);
+```
+
+```javascript
+// models/Comment.js
+
+import mongoose from 'mongoose';
+
+const CommentSchema = new mongoose.Schema({
+  launchId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Launch', 
+    required: true 
+  },
+  userId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User', 
+    required: true 
+  },
+  parentId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Comment',
+    default: null
+  },
+  content: { type: String, required: true }
+}, { timestamps: true });
+
+CommentSchema.index({ launchId: 1 });
+CommentSchema.index({ userId: 1 });
+CommentSchema.index({ parentId: 1 });
+
+export default mongoose.models.Comment || mongoose.model('Comment', CommentSchema);
+```
+
+```javascript
+// models/Review.js
+
+import mongoose from 'mongoose';
+
+const ReviewSchema = new mongoose.Schema({
+  productId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Product', 
+    required: true 
+  },
+  authorId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User', 
+    required: true 
+  },
+  rating: { type: Number, required: true, min: 1, max: 5 },
+  title: { type: String },
+  content: { type: String, required: true },
+  pros: { type: String },
+  cons: { type: String },
+  videoUrl: { type: String },
+  verified: { type: Boolean, default: false },
+  verifiedAt: { type: Date },
+  status: { 
+    type: String, 
+    enum: ['PENDING', 'APPROVED', 'REJECTED'],
+    default: 'PENDING'
+  },
+  helpfulCount: { type: Number, default: 0 }
+}, { timestamps: true });
+
+ReviewSchema.index({ productId: 1 });
+ReviewSchema.index({ authorId: 1 });
+ReviewSchema.index({ status: 1 });
+ReviewSchema.index({ verified: 1 });
+
+export default mongoose.models.Review || mongoose.model('Review', ReviewSchema);
+```
+
+```javascript
+// models/Pilot.js
+
+import mongoose from 'mongoose';
+
+const PilotSchema = new mongoose.Schema({
+  productId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Product', 
+    required: true 
+  },
+  title: { type: String, required: true },
+  description: { type: String, required: true },
+  pilotType: { 
+    type: String, 
+    enum: ['FREE_TRIAL', 'DISCOUNTED', 'POC', 'ENTERPRISE_PILOT'],
+    required: true
+  },
+  originalPrice: { type: Number },
+  pilotPrice: { type: Number, required: true },
+  durationDays: { type: Number, required: true },
+  spotsTotal: { type: Number, required: true },
+  spotsRemaining: { type: Number, required: true },
+  requirements: { type: String },
+  deliverables: { type: String },
+  status: { 
+    type: String, 
+    enum: ['DRAFT', 'ACTIVE', 'FULL', 'COMPLETED', 'CANCELLED'],
+    default: 'DRAFT'
+  },
+  startsAt: { type: Date },
+  endsAt: { type: Date }
+}, { timestamps: true });
+
+PilotSchema.index({ productId: 1 });
+PilotSchema.index({ status: 1 });
+
+export default mongoose.models.Pilot || mongoose.model('Pilot', PilotSchema);
+```
+
+```javascript
+// models/PilotInquiry.js
+
+import mongoose from 'mongoose';
+
+const PilotInquirySchema = new mongoose.Schema({
+  pilotId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Pilot', 
+    required: true 
+  },
+  userId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User', 
+    required: true 
+  },
+  companyName: { type: String },
+  message: { type: String },
+  status: { 
+    type: String, 
+    enum: ['PENDING', 'ACCEPTED', 'REJECTED', 'COMPLETED'],
+    default: 'PENDING'
+  },
+  respondedAt: { type: Date }
+}, { timestamps: true });
+
+PilotInquirySchema.index({ pilotId: 1 });
+PilotInquirySchema.index({ userId: 1 });
+PilotInquirySchema.index({ status: 1 });
+
+export default mongoose.models.PilotInquiry || mongoose.model('PilotInquiry', PilotInquirySchema);
+```
+
+```javascript
+// models/Category.js
+
+import mongoose from 'mongoose';
+
+const CategorySchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  slug: { type: String, required: true, unique: true, lowercase: true },
+  description: { type: String },
+  icon: { type: String },
+  color: { type: String },
+  parentId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Category',
+    default: null
+  },
+  sortOrder: { type: Number, default: 0 }
+}, { timestamps: true });
+
+CategorySchema.index({ slug: 1 });
+CategorySchema.index({ parentId: 1 });
+
+export default mongoose.models.Category || mongoose.model('Category', CategorySchema);
+```
+
+```javascript
+// models/Notification.js
+
+import mongoose from 'mongoose';
+
+const NotificationSchema = new mongoose.Schema({
+  userId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User', 
+    required: true 
+  },
+  type: { 
+    type: String, 
+    enum: ['LAUNCH_UPVOTE', 'LAUNCH_COMMENT', 'NEW_REVIEW', 'PILOT_INQUIRY', 'SYSTEM'],
+    required: true
+  },
+  title: { type: String, required: true },
+  message: { type: String, required: true },
+  data: { type: mongoose.Schema.Types.Mixed },
+  read: { type: Boolean, default: false },
+  readAt: { type: Date }
+}, { timestamps: true });
+
+NotificationSchema.index({ userId: 1 });
+NotificationSchema.index({ read: 1 });
+NotificationSchema.index({ createdAt: -1 });
+
+export default mongoose.models.Notification || mongoose.model('Notification', NotificationSchema);
 ```
 
 ---
 
-## 3. Migration Strategy
+## 3. Database Connection
 
-### Initial Migration
+```javascript
+// lib/mongodb.js
+
+import mongoose from 'mongoose';
+
+const MONGODB_URI = process.env.MONGODB_URI;
+
+if (!MONGODB_URI) {
+  throw new Error('Please define the MONGODB_URI environment variable');
+}
+
+let cached = global.mongoose;
+
+if (!cached) {
+  cached = global.mongoose = { conn: null, promise: null };
+}
+
+async function dbConnect() {
+  if (cached.conn) {
+    return cached.conn;
+  }
+
+  if (!cached.promise) {
+    const opts = {
+      bufferCommands: false,
+    };
+
+    cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {
+      return mongoose;
+    });
+  }
+
+  cached.conn = await cached.promise;
+  return cached.conn;
+}
+
+export default dbConnect;
+```
+
+---
+
+## 4. Collections Summary
+
+| Collection | Purpose | Key Indexes |
+|------------|---------|-------------|
+| `users` | User accounts and profiles | email, role |
+| `accounts` | OAuth provider accounts | provider + providerAccountId |
+| `companies` | Startup organizations | slug, categoryId, revenueStage |
+| `products` | Individual products/tools | slug, companyId, tags |
+| `launches` | Product Hunt-style launches | launchedAt, status, featured |
+| `upvotes` | Launch upvotes | launchId + userId (unique) |
+| `comments` | Launch comments | launchId, parentId |
+| `reviews` | G2-style testimonials | productId, status, verified |
+| `pilots` | AppSumo-style deals | productId, status |
+| `pilotinquiries` | Pilot requests | pilotId, userId, status |
+| `categories` | Hierarchical categories | slug, parentId |
+| `notifications` | User notifications | userId, read, createdAt |
+
+---
+
+## 5. MongoDB Atlas Setup
+
+### Environment Variables
+```env
+MONGODB_URI=mongodb+srv://<username>:<password>@cluster.xxxxx.mongodb.net/ethaum?retryWrites=true&w=majority
+```
+
+### Recommended Indexes (via Atlas UI)
+1. Text search index on `companies.name`, `companies.description`
+2. Text search index on `products.name`, `products.description`
+3. Compound index on `launches` for homepage feed queries
+
+---
+
+## 6. Data Relationships
+
+```
+User ──┬──< Account (1:N - OAuth accounts)
+       │
+       └──< Company.members[] (embedded array)
+       
+Company ──< Product (1:N)
+        └── Category (N:1)
+
+Product ──< Launch (1:N)
+        ├< Review (1:N)
+        └< Pilot (1:N)
+
+Launch ──< Upvote (1:N)
+       └< Comment (1:N, self-referencing for replies)
+
+Pilot ──< PilotInquiry (1:N)
+```
+
+---
+
+## 7. Migration Notes
+
+### From Empty Database
 ```bash
-# Generate initial migration
-npx prisma migrate dev --name init
+# Seed categories first
+npm run seed:categories
 
-# Apply to production
-npx prisma migrate deploy
+# Then optionally seed demo data
+npm run seed:demo
 ```
 
-### Seed Data Structure
-```typescript
-// prisma/seed.ts
-async function main() {
-  // 1. Create categories
-  // 2. Create sample users
-  // 3. Create sample companies
-  // 4. Create sample products
-  // 5. Create sample launches
-}
-```
-
----
-
-## 4. Performance Optimizations
-
-### Key Indexes
-- All foreign keys indexed by default
-- Additional indexes on:
-  - `launches.launchedAt` (for daily launches query)
-  - `launches.status` (filter live launches)
-  - `reviews.verified` (filter verified reviews)
-  - `companies.slug` (URL lookups)
-
-### Query Optimization Notes
-- Use `include` sparingly, prefer explicit `select`
-- Paginate all list queries
-- Cache frequently accessed data (categories, featured launches)
-- Use connection pooling (PgBouncer or Prisma Accelerate)
-
----
-
-## 5. Data Integrity Rules
-
-| Rule | Implementation |
-|------|----------------|
-| Cascade deletes | Company → Products → Launches/Reviews |
-| Unique constraints | slug fields, user-company membership |
-| Required fields | Enforced at schema level |
-| Soft deletes | Not implemented in MVP (add `deletedAt` later) |
+### Key Differences from SQL
+- Use embedded documents where appropriate (e.g., company.members[])
+- Use references (ObjectId) for truly separate entities
+- Denormalize counts (upvoteCount, commentCount) for performance
