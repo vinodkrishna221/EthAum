@@ -1,0 +1,106 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -- Vinod's Core Models (Reference only, needed for relations) --
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  companies Company[] // Startup Admin owns companies
+  inquiries PilotInquiry[] // Buyer makes inquiries
+  notifications Notification[] 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Company {
+  id          String   @id @default(cuid())
+  name        String
+  website     String?
+  logoUrl     String?
+  description String?
+  pilots      Pilot[]
+  ownerId     String
+  owner       User     @relation(fields: [ownerId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// -- Rani's Pilot Models --
+
+model Pilot {
+  id              String   @id @default(cuid())
+  title           String
+  description     String   @db.Text
+  shortDescription String? @db.Text
+  price           Float
+  originalPrice   Float
+  currency        String   @default("USD")
+  
+  features        String[] // Stored as array of strings
+  requirements    String[]
+  deliverables    String[]
+  
+  status          String   @default("draft") // draft, active, archived
+  spotsTotal      Int
+  spotsRemaining  Int
+  
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  
+  inquiries       PilotInquiry[]
+  
+  views           Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // For future: Categories
+  category        String   @default("General")
+}
+
+model PilotInquiry {
+  id              String   @id @default(cuid())
+  
+  // Applicant Info
+  applicantName   String
+  applicantEmail  String
+  applicantRole   String
+  applicantCompany String
+  teamSize        String?
+  website         String?
+  useCase         String   @db.Text
+  
+  status          String   @default("pending") // pending, accepted, rejected
+  
+  pilotId         String
+  pilot           Pilot    @relation(fields: [pilotId], references: [id])
+  
+  userId          String?  // Optional: link to registered user if logged in
+  user            User?    @relation(fields: [userId], references: [id])
+
+  responseMessage String?  @db.Text // Message from startup when accepting/rejecting
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  
+  type      String   // inquiry, message, alert, system
+  title     String
+  message   String
+  actionUrl String?
+  
+  read      Boolean  @default(false)
+  
+  createdAt DateTime @default(now())
+}
